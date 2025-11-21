@@ -1,0 +1,74 @@
+from google.colab import files import cv2
+import numpy as np
+import random
+from google.colab.patches import cv2_imshow
+# -----------------------------
+# STEP 1: UPLOAD IMAGE # -----------------------------
+print(" Upload an image (input.jpg or any name):") uploaded = files.upload()
+# Automatically read first uploaded image image_name = list(uploaded.keys())[0]
+img = cv2.imread(image_name, 0) # grayscale img = img.astype(np.float32) / 255.0
+# ----------------------------- # Helper functions
+# ----------------------------- def mse(a, b):
+return np.mean((a - b)**2)
+def normalize(img):
+img = img.astype(np.float32) if img.max() > 1:
+img = img / 255.0 return img
+# Image operations (primitives) def op_smooth(img):
+return cv2.GaussianBlur(img, (3,3), 0)
+def op_sharpen(img):
+k = np.array([[0,-1,0],[-1,5,-1],[0,-1,0]]) return cv2.filter2D(img, -1, k)
+def op_sobel(img):
+sx = cv2.Sobel(img, cv2.CV_32F, 1, 0) sy = cv2.Sobel(img, cv2.CV_32F, 0, 1) return np.abs(sx) + np.abs(sy)
+36
+def op_invert(img): return 1 - img
+PRIMITIVES = [op_smooth, op_sharpen, op_sobel, op_invert] N_PRIM = len(PRIMITIVES)
+# -----------------------------
+# GEA Individual
+# -----------------------------
+def random_individual(depth=3):
+return [random.randint(0, N_PRIM-1) for _ in range(depth)]
+def evaluate(ind, img): out = img.copy() for op in ind:
+out = PRIMITIVES[op](out)
+out = normalize(out) return out
+# ----------------------------- # Genetic Operators
+# ----------------------------- def mutate(ind, rate=0.3):
+new = ind.copy()
+for i in range(len(new)):
+if random.random() < rate:
+new[i] = random.randint(0, N_PRIM-1)
+return new
+def crossover(a, b):
+point = random.randint(1, len(a)-1)
+return a[:point] + b[point:], b[:point] + a[point:]
+# -----------------------------
+# GEA Main Loop
+# -----------------------------
+def GEA(img, target, pop_size=20, generations=20):
+population = [random_individual() for _ in range(pop_size)]
+for gen in range(generations): scored = []
+for ind in population:
+out = evaluate(ind, img) score = mse(out, target) scored.append((score, ind))
+37
+
+scored.sort(key=lambda x: x[0]) best_score, best_ind = scored[0]
+print(f"Gen {gen}: Best MSE = {best_score:.6f} | Ind = {best_ind}")
+survivors = [ind for _, ind in scored[:pop_size//2]] new_pop = survivors.copy()
+while len(new_pop) < pop_size:
+p1, p2 = random.sample(survivors, 2) child, _ = crossover(p1, p2) new_pop.append(mutate(child))
+population = new_pop return best_ind
+# -------------------------------- # Target Image = Sobel Edges # -------------------------------- target = op_sobel(img)
+target = normalize(target)
+print("\n Running Genetic Evolution Algorithm...") best = GEA(img, target, generations=20)
+print("\n Best Evolved Filter Sequence:", best)
+# Apply Best Evolved Filters result = evaluate(best, img)
+# --------------------------------
+# DISPLAY OUTPUT
+# --------------------------------
+print("\n🖼 Input Image:") cv2_imshow((img * 255).astype(np.uint8))
+print("\n Target (Sobel Edges):") cv2_imshow((target * 255).astype(np.uint8))
+print("\n GEA Output (Evolved Image):") cv2_imshow((result * 255).astype(np.uint8))
+# Save image
+cv2.imwrite("GEA_output.png", (result * 255).astype(np.uint8))
+38
+
+print("\n Output saved as: GEA_output.png") files.download("GEA_output.png")
